@@ -2,6 +2,7 @@
 
 import functools
 import asyncio
+import inspect
 from typing import Any, Callable, Dict, Optional
 
 
@@ -17,10 +18,11 @@ def task(name: Optional[str] = None, retries: int = 0, timeout: int = 300):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             try:
-                result = await asyncio.wait_for(
-                    func(*args, **kwargs),
-                    timeout=timeout,
-                )
+                if inspect.iscoroutinefunction(func):
+                    coro = func(*args, **kwargs)
+                else:
+                    coro = asyncio.to_thread(func, *args, **kwargs)
+                result = await asyncio.wait_for(coro, timeout=timeout)
                 return result
             except asyncio.TimeoutError:
                 raise TimeoutError(f"Task {name or func.__name__} timed out after {timeout}s")
@@ -48,7 +50,10 @@ def on_event(event_type: str):
 
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            return await func(*args, **kwargs)
+            if inspect.iscoroutinefunction(func):
+                return await func(*args, **kwargs)
+            else:
+                return func(*args, **kwargs)
 
         return wrapper
     return decorator
